@@ -1,0 +1,4 @@
+Flask
+yt-dlp
+# Optional if you host frontend & API on different domains (CORS):
+# Flask-Cors

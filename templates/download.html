@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Universal Video Downloader</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --bg:#0b0e14; --card:#121826aa; --card-b:#2a3343; --text:#eef2ff; --muted:#a3b1c6;
+      --violet:#7c3aed; --green:#22c55e; --green2:#a3e635; --danger:#ef4444;
+      --shadow:0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
+      --r:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; color:var(--text);
+      background: radial-gradient(1200px 800px at 10% -10%, #1b2451 0%, transparent 60%),
+                  radial-gradient(1200px 800px at 110% 10%, #083344 0%, transparent 60%),
+                  var(--bg);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      min-height:100svh; display:flex; align-items:center; justify-content:center; padding:28px;
+    }
+    .shell{ width:min(920px,100%); }
+    .hero{ text-align:center; margin-bottom:22px; }
+    .badge{
+      display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px;
+      color:var(--muted); border:1px solid var(--card-b);
+      background:linear-gradient(180deg,#192036,#0e1423); box-shadow:var(--shadow);
+    }
+    .logo{ width:18px;height:18px;border-radius:4px;background:conic-gradient(from 200deg,#7c3aed,#22c55e,#06b6d4,#7c3aed); box-shadow:0 0 0 2px #0b0e14 inset; }
+    h1{
+      margin:14px 0 4px; font-size:clamp(24px,2.7vw,34px); letter-spacing:.2px; font-weight:800;
+      background:linear-gradient(90deg,#fff,#c7d2fe 40%,#c7ffe7 80%); -webkit-background-clip:text; background-clip:text; color:transparent;
+    }
+    p.sub{ margin:0; color:var(--muted) }
+
+    .card{
+      background:linear-gradient(180deg,#101522ee,#0b1020dd) padding-box; border:1px solid var(--card-b);
+      border-radius:var(--r); padding:20px; box-shadow:var(--shadow); backdrop-filter:blur(8px);
+    }
+
+    label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 6px }
+    input,select{
+      width:100%; background:#0b1020; border:1px solid #273149; color:var(--text);
+      padding:12px 14px; border-radius:12px; outline:none; transition:border-color .2s, box-shadow .2s;
+    }
+    input:focus,select:focus{ border-color:#5b66ff; box-shadow:0 0 0 4px rgba(91,102,255,.15) }
+    .row{ display:grid; grid-template-columns:1fr 1fr; gap:14px }
+    .switch{ display:inline-flex; align-items:center; gap:10px; color:var(--muted); user-select:none; }
+    .switch input{ width:auto; accent-color:var(--green); }
+
+    .btn{
+      display:inline-flex; justify-content:center; align-items:center; gap:10px;
+      width:100%; padding:14px 18px; border-radius:14px; border:0; cursor:pointer;
+      background:linear-gradient(180deg,#7950f2,#6d28d9); color:#fff; font-weight:800; letter-spacing:.3px; font-size:15px;
+      box-shadow:0 12px 30px rgba(124,58,237,.35), inset 0 -1.5px 0 rgba(255,255,255,.15);
+      transition:transform .07s ease-in-out, filter .2s; margin-top:14px;
+    }
+    .btn:hover{ filter:brightness(1.06) } .btn:active{ transform:translateY(1px) }
+
+    /* Progress (hidden until first progress; no moving bar at start) */
+    .meter{ display:none; margin-top:16px; height:14px; background:#0b1020; border:1px solid #1f2942; border-radius:999px; overflow:hidden; }
+    .meter .bar{ height:100%; width:0%; background:linear-gradient(90deg,var(--green),var(--green2)); transition:width .2s ease; }
+
+    .status{ display:none; justify-content:space-between; gap:12px; margin-top:10px; color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; }
+    .pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; background:#0c1428; border:1px solid #22304d; color:#cbd5e1; font-size:12px; }
+
+    .dl{ display:none; margin-top:16px; }
+    .dl .a{
+      display:inline-flex; align-items:center; gap:10px; background:linear-gradient(180deg,#22c55e,#16a34a);
+      color:#052e12; padding:12px 16px; border-radius:12px; text-decoration:none; font-weight:800;
+      box-shadow:0 12px 30px rgba(34,197,94,.35), inset 0 -1px 0 rgba(255,255,255,.25);
+    }
+    .error{ display:none; margin-top:14px; color:#fecaca; background:#450a0a; border:1px solid #7f1d1d; padding:12px; border-radius:12px; }
+
+    footer{ margin-top:20px; text-align:center; color:var(--muted); font-size:12px }
+
+    /* API Drawer */
+    .api-btn{
+      position:fixed; right:20px; bottom:20px; padding:10px 14px; border-radius:999px; border:1px solid #25304a;
+      background:#0b1020; color:#cbd5e1; font-weight:700; cursor:pointer; box-shadow:var(--shadow);
+    }
+    .drawer{ position:fixed; inset:0; display:none; place-items:end center; background:rgba(0,0,0,.55); }
+    .drawer.open{ display:grid; }
+    .sheet{
+      width:min(900px,100%); max-height:85svh; overflow:auto; background:#0c1224; border:1px solid #2a3343; border-radius:18px 18px 0 0; padding:18px 18px 28px;
+      box-shadow:0 30px 60px rgba(0,0,0,.6); animation:slideUp .18s ease-out;
+    }
+    @keyframes slideUp{ from{ transform:translateY(12px); opacity:.8 } to{ transform:translateY(0); opacity:1 } }
+    .sheet h3{ margin:4px 0 12px; }
+    .sheet pre{ margin:8px 0 14px; padding:12px; border-radius:12px; background:#0a0f1f; border:1px solid #1f2942; color:#e5e7eb; overflow:auto; }
+    .sheet code{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12.5px; }
+    .closeX{ float:right; background:#121a30; border:1px solid #24314f; border-radius:8px; color:#cbd5e1; padding:6px 10px; cursor:pointer; }
+    .muted{ color:#9fb0c9 }
+    @media (max-width:720px){ .row{ grid-template-columns:1fr } }
+  </style>
+
+  <!-- Injected from Flask: e.g., "https://downloader.yourdomain.com" -->
+  <script>
+    window.API_BASE = {{ DOMAIN|tojson }};
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <div class="badge"><span class="logo"></span> Real-time universal downloader</div>
+      <h1>Download videos that just <em>play everywhere</em></h1>
+      <p class="sub">H.264/AAC MP4 with faststart • Live progress via SSE</p>
+    </div>
+
+    <div class="card">
+      <form id="f">
+        <label>Video URL</label>
+        <input id="url" name="url" type="url" placeholder="https://..." required />
+
+        <div class="row">
+          <div>
+            <label>Output</label>
+            <select id="mode" name="mode">
+              <option value="mp4" selected>MP4 (H.264/AAC)</option>
+            </select>
+          </div>
+          <div>
+            <label>Max Height (video)</label>
+            <select id="height" name="height">
+              <option>2160</option><option>1440</option><option selected>1080</option>
+              <option>720</option><option>480</option><option>360</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="switch" style="margin-top:10px">
+          <input id="playlist" name="playlist" type="checkbox" />
+          Allow playlist
+        </label>
+
+        <!-- Always request universal encode (H.264/AAC + faststart) -->
+        <input type="hidden" name="universal" value="on" />
+
+        <!-- Full-width Start button BELOW -->
+        <button id="go" class="btn" type="submit" title="Start download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Start
+        </button>
+      </form>
+
+      <!-- Progress (hidden until first progress; no moving bar at start) -->
+      <div id="progressWrap" style="margin-top:10px;">
+        <div id="meta" class="status">
+          <span class="pill" id="title">Starting…</span>
+          <span id="stats">0% • — • —</span>
+        </div>
+
+        <div id="meter" class="meter" aria-hidden="true">
+          <div class="bar" id="bar"></div>
+        </div>
+
+        <div class="dl" id="dl">
+          <a class="a" id="downloadLink" href="#" download>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" stroke="#052e12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Download file
+          </a>
+        </div>
+
+        <div class="error" id="err"></div>
+      </div>
+    </div>
+
+    <footer>Use only where permitted • Powered by yt-dlp + ffmpeg</footer>
+  </div>
+
+  <!-- API Drawer trigger -->
+  <button class="api-btn" id="openApi">API Documentation</button>
+
+  <!-- Drawer -->
+  <div class="drawer" id="drawer">
+    <div class="sheet">
+      <button class="closeX" id="closeApi">Close</button>
+      <h3>Simple API ({{ DOMAIN }})</h3>
+      <p class="muted">Responses stream live progress via SSE on <code>/api/events/&lt;job_id&gt;</code>.</p>
+
+      <h4>1) Start a job</h4>
+      <pre><code id="curlStart"></code></pre>
+
+      <h4>2) Subscribe to progress (SSE)</h4>
+      <pre><code id="curlSSE"></code></pre>
+
+      <h4>3) Download the file</h4>
+      <pre><code id="curlResult"></code></pre>
+
+      <h4>Postman JSON body</h4>
+      <pre><code>{
+  "url": "https://example.com/video",
+  "mode": "mp4",
+  "height": 1080,
+  "universal": true,
+  "playlist": false
+}</code></pre>
+
+      <h4>Endpoints</h4>
+      <pre><code id="endpointsList"></code></pre>
+    </div>
+  </div>
+
+  <script>
+    const f = document.getElementById('f');
+    const playlistEl = document.getElementById('playlist');
+    const goBtn = document.getElementById('go');
+
+    const meter = document.getElementById('meter');
+    const bar = document.getElementById('bar');
+    const meta = document.getElementById('meta');
+    const titleEl = document.getElementById('title');
+    const statsEl = document.getElementById('stats');
+    const dlWrap = document.getElementById('dl');
+    const dlLink = document.getElementById('downloadLink');
+    const errBox = document.getElementById('err');
+
+    let es;
+
+    function setWorking(on){
+      goBtn.disabled = on;
+      goBtn.style.opacity = on ? .7 : 1;
+    }
+    function resetUI(){
+      errBox.style.display = 'none'; errBox.textContent = '';
+      dlWrap.style.display = 'none';
+      meta.style.display = 'none';
+      meter.style.display = 'none';     // hide until progress arrives
+      bar.style.width = '0%';
+      statsEl.textContent = '0% • — • —';
+      titleEl.textContent = 'Starting…';
+    }
+
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (es) { es.close(); es = null; }
+      resetUI(); setWorking(true);
+
+      const formData = new FormData(f);
+      if (!playlistEl.checked) formData.delete('playlist');
+
+      try {
+        const res = await fetch('/api/start', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(await res.text() || 'Failed to start');
+        const { job_id } = await res.json();
+        meta.style.display = 'flex'; // show status row (still no bar yet)
+
+        es = new EventSource(`/api/events/${job_id}`);
+
+        es.addEventListener('progress', (ev) => {
+          const d = JSON.parse(ev.data);
+          if (d.title) titleEl.textContent = d.title;
+
+          // first progress -> reveal meter
+          if (meter.style.display === 'none') meter.style.display = 'block';
+
+          const pct = d.percent != null ? Math.max(0, Math.min(100, d.percent)) : null;
+          if (pct != null) bar.style.width = pct + '%';
+
+          const parts = [];
+          parts.push(pct != null ? `${pct}%` : '—');
+          parts.push(d.speed || '—');
+          parts.push(d.eta ? `ETA ${d.eta}` : (d.message || ''));
+          statsEl.textContent = parts.join(' • ');
+        });
+
+        es.addEventListener('done', (ev) => {
+          const d = JSON.parse(ev.data);
+          bar.style.width = '100%';
+          statsEl.textContent = 'Complete';
+          dlLink.href = d.download_url;
+          if (d.filename) dlLink.setAttribute('download', d.filename);
+          dlWrap.style.display = 'block';
+          setWorking(false);
+          es.close();
+        });
+
+        es.addEventListener('error', (ev) => {
+          try { const d = JSON.parse(ev.data); showError(d.message || 'Stream error'); }
+          catch { showError('Stream error'); }
+          setWorking(false);
+          es.close();
+        });
+
+        es.addEventListener('ping', ()=>{});
+      } catch (err) {
+        showError(err.message || 'Network error'); setWorking(false);
+      }
+    });
+
+    function showError(msg){ errBox.textContent = msg; errBox.style.display = 'block'; }
+
+    // ----- API Drawer logic (uses DOMAIN from server) -----
+    const drawer = document.getElementById('drawer');
+    const openApi = document.getElementById('openApi');
+    const closeApi = document.getElementById('closeApi');
+
+    function fillDocs(){
+      const base = (window.API_BASE || window.location.origin).replace(/\/+$/,'');
+      const curlStart = `curl -s -X POST ${base}/api/start \\
+  -H "Content-Type: application/json" \\
+  -d '{\"url\":\"https://example.com/video\",\"mode\":\"mp4\",\"height\":1080,\"universal\":true}'`;
+      const curlSSE   = `curl -N ${base}/api/events/<job_id>`;
+      const curlRes   = `curl -L -o video.mp4 ${base}/api/result/<job_id>`;
+      document.getElementById('curlStart').textContent  = curlStart;
+      document.getElementById('curlSSE').textContent    = curlSSE;
+      document.getElementById('curlResult').textContent = curlRes;
+      document.getElementById('endpointsList').textContent =
+`POST ${base}/api/start
+GET  ${base}/api/events/<job_id>
+GET  ${base}/api/result/<job_id>`;
+    }
+
+    openApi.addEventListener('click', ()=>{ fillDocs(); drawer.classList.add('open'); });
+    closeApi.addEventListener('click', ()=> drawer.classList.remove('open'));
+    drawer.addEventListener('click', (e)=>{ if(e.target===drawer) drawer.classList.remove('open'); });
+  </script>
+</body>
+</html>
