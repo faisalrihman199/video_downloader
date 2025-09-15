@@ -234,7 +234,7 @@ def _no_buffer(resp):
     resp.headers.setdefault("X-Accel-Buffering", "no")  # Nginx
     return resp
 
-@app.get("/download")
+@app.get("/")
 def download_ui():
     # If DOMAIN not set, detect current request scheme/host
     proto = request.headers.get("X-Forwarded-Proto", request.scheme)
