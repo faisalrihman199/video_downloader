@@ -3,8 +3,9 @@
 """
 UI:   GET  /download  (serves templates/download.html)
 API:  POST /api/start
-      GET  /api/events/<job_id>   (SSE live progress)
-      GET  /api/result/<job_id>   (download file)
+      POST /api/cookies            (upload cookies.txt -> {cookies_id})
+      GET  /api/events/<job_id>    (SSE live progress)
+      GET  /api/result/<job_id>    (download file)
 
 Run:
   python downloader.py --host 0.0.0.0 --port 8000
@@ -35,8 +36,9 @@ except ImportError:
     print("Missing yt-dlp. Install: pip install yt-dlp", file=sys.stderr)
     sys.exit(1)
 
-# ---------------- In-memory job store ----------------
-JOBS: Dict[str, Dict[str, Any]] = {}  # job_id -> {status, queue, path, title, start, err}
+# ---------------- In-memory job + cookies store ----------------
+JOBS: Dict[str, Dict[str, Any]] = {}      # job_id -> {status, queue, path, title, start, err, cookies_path}
+COOKIES: Dict[str, str] = {}              # cookies_id -> absolute path (temp file)
 
 def ffmpeg_present() -> bool:
     import shutil
@@ -126,6 +128,8 @@ def make_opts(
         "overwrites": True,
         "windowsfilenames": True,
         "final_ext": "mp4" if not as_audio else "mp3",
+        # Helps on YouTube to avoid some bot checks / consent screens:
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
 
     if as_audio:
@@ -222,10 +226,17 @@ def do_download(job_id: str, url: str, outdir: str, as_audio: bool, max_height: 
         job["status"] = "error"
         job["err"] = str(e)
         send(job_id, "error", {"message": str(e)})
+    finally:
+        # secure cleanup of cookies file (if any)
+        cpath = job.get("cookies_path")
+        if cpath and os.path.exists(cpath):
+            try: os.remove(cpath)
+            except Exception: pass
 
 # ---------------- Web server (UI + API) ----------------
 app = Flask(__name__, template_folder="templates")
 ROOT_TMP = tempfile.mkdtemp(prefix="ydl-")
+COOKIES_DIR = tempfile.mkdtemp(prefix="cookies-")  # writable on Render (/tmp)
 
 # Global: stop proxies/CDNs from buffering SSE
 @app.after_request
@@ -243,6 +254,24 @@ def download_ui():
     domain = os.environ.get("DOMAIN", detected).rstrip("/")
     return render_template("download.html", DOMAIN=domain)
 
+# ---- Cookies upload (optional, for sites that need auth like YouTube) ----
+@app.post("/api/cookies")
+def api_cookies_upload():
+    """
+    Upload a Netscape cookies.txt file (exported from your browser).
+    Returns: {"cookies_id": "..."}  -> pass this in /api/start
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "missing file"}), 400
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "empty file"}), 400
+    cid = uuid.uuid4().hex[:16]
+    cpath = os.path.join(COOKIES_DIR, f"{cid}.txt")
+    f.save(cpath)
+    COOKIES[cid] = cpath
+    return jsonify({"cookies_id": cid})
+
 @app.post("/api/start")
 def api_start():
     """Accepts form-data (UI) or JSON (Postman). Returns { job_id }."""
@@ -252,7 +281,8 @@ def api_start():
         as_audio = (p.get("mode","mp4") == "mp3")
         height = int(p.get("height", 1080))
         universal = bool(p.get("universal", True))
-        cookies = (p.get("cookies") or "").strip() or None
+        cookies_id = (p.get("cookies_id") or "").strip() or None
+        cookies_path = COOKIES.get(cookies_id) if cookies_id else ((p.get("cookies") or "").strip() or None)
         proxy = (p.get("proxy") or "").strip() or None
         allow_playlist = bool(p.get("playlist", False))
     else:
@@ -260,7 +290,8 @@ def api_start():
         as_audio = (request.form.get("mode","mp4") == "mp3")
         height = int(request.form.get("height","1080"))
         universal = request.form.get("universal") is not None
-        cookies = (request.form.get("cookies") or "").strip() or None
+        cookies_id = (request.form.get("cookies_id") or "").strip() or None
+        cookies_path = COOKIES.get(cookies_id) if cookies_id else ((request.form.get("cookies") or "").strip() or None)
         proxy = (request.form.get("proxy") or "").strip() or None
         allow_playlist = request.form.get("playlist") is not None
 
@@ -271,11 +302,19 @@ def api_start():
     os.makedirs(outdir, exist_ok=True)
 
     job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {"status":"queued","queue":Queue(),"path":None,"title":None,"start":time.time(),"err":None}
+    JOBS[job_id] = {
+        "status": "queued",
+        "queue": Queue(),
+        "path": None,
+        "title": None,
+        "start": time.time(),
+        "err": None,
+        "cookies_path": cookies_path,
+    }
 
     t = threading.Thread(
         target=do_download,
-        args=(job_id, url, outdir, as_audio, height, universal, cookies, proxy, allow_playlist),
+        args=(job_id, url, outdir, as_audio, height, universal, cookies_path, proxy, allow_playlist),
         daemon=True
     )
     t.start()
@@ -324,5 +363,5 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     print(f"UI:   http://{args.host}:{args.port}/download")
-    print(f"API:  POST /api/start   |  GET /api/events/<job_id>  |  GET /api/result/<job_id>")
+    print(f"API:  POST /api/start   |  POST /api/cookies   |  GET /api/events/<job_id>  |  GET /api/result/<job_id>")
     app.run(host=args.host, port=int(args.port), threaded=True)

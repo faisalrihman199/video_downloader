@@ -96,7 +96,13 @@
     .sheet code{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12.5px; }
     .closeX{ float:right; background:#121a30; border:1px solid #24314f; border-radius:8px; color:#cbd5e1; padding:6px 10px; cursor:pointer; }
     .muted{ color:#9fb0c9 }
-    @media (max-width:720px){ .row{ grid-template-columns:1fr } }
+
+    details.adv { margin-top:12px; }
+    details.adv > summary { cursor:pointer; color:#cbd5e1; padding:6px 0; }
+    details.adv .hint { color:#8ea3c7; font-size:12px; margin:6px 0 10px; }
+    .row-adv { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end; }
+    .tiny { font-size:12px; color:#9fb0c9 }
+    @media (max-width:720px){ .row{ grid-template-columns:1fr } .row-adv{ grid-template-columns:1fr } }
   </style>
 
   <!-- Injected from Flask: e.g., "https://downloader.yourdomain.com" -->
@@ -137,6 +143,22 @@
           <input id="playlist" name="playlist" type="checkbox" />
           Allow playlist
         </label>
+
+        <!-- Advanced: optional cookies uploader for YT/FB/etc. when they challenge -->
+        <details class="adv">
+          <summary>Advanced</summary>
+          <p class="hint">If YouTube asks to sign in / confirm you’re not a bot, export your browser cookies for <b>youtube.com</b> as <code>cookies.txt</code> (Netscape format) and upload them here.</p>
+          <div class="row-adv">
+            <div>
+              <label>cookies.txt (Netscape format)</label>
+              <input id="ckfile" type="file" accept=".txt" />
+              <div class="tiny">Tip: Use a “cookies.txt” browser extension to export.</div>
+            </div>
+            <button class="btn" id="uploadBtn" type="button">Upload cookies</button>
+          </div>
+          <input type="hidden" id="cookies_id" name="cookies_id" />
+          <div id="ckok" class="tiny" style="display:none;margin-top:6px;">Cookies uploaded ✓</div>
+        </details>
 
         <!-- Always request universal encode (H.264/AAC + faststart) -->
         <input type="hidden" name="universal" value="on" />
@@ -185,7 +207,7 @@
     <div class="sheet">
       <button class="closeX" id="closeApi">Close</button>
       <h3>Simple API ({{ DOMAIN }})</h3>
-      <p class="muted">Responses stream live progress via SSE on <code>/api/events/&lt;job_id&gt;</code>.</p>
+      <p class="muted">Progress streams via SSE on <code>/api/events/&lt;job_id&gt;</code>.</p>
 
       <h4>1) Start a job</h4>
       <pre><code id="curlStart"></code></pre>
@@ -196,14 +218,8 @@
       <h4>3) Download the file</h4>
       <pre><code id="curlResult"></code></pre>
 
-      <h4>Postman JSON body</h4>
-      <pre><code>{
-  "url": "https://example.com/video",
-  "mode": "mp4",
-  "height": 1080,
-  "universal": true,
-  "playlist": false
-}</code></pre>
+      <h4>With cookies</h4>
+      <pre><code id="curlWithCookies"></code></pre>
 
       <h4>Endpoints</h4>
       <pre><code id="endpointsList"></code></pre>
@@ -224,6 +240,12 @@
     const dlLink = document.getElementById('downloadLink');
     const errBox = document.getElementById('err');
 
+    // cookies upload UI
+    const ckFile = document.getElementById('ckfile');
+    const ckOk = document.getElementById('ckok');
+    const ckHidden = document.getElementById('cookies_id');
+    const uploadBtn = document.getElementById('uploadBtn');
+
     let es;
 
     function setWorking(on){
@@ -239,6 +261,22 @@
       statsEl.textContent = '0% • — • —';
       titleEl.textContent = 'Starting…';
     }
+    function showError(msg){ errBox.textContent = msg; errBox.style.display = 'block'; }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!ckFile.files || !ckFile.files[0]) { alert('Choose a cookies.txt file first'); return; }
+      try {
+        const form = new FormData();
+        form.append('file', ckFile.files[0]);
+        const res = await fetch('/api/cookies', { method: 'POST', body: form });
+        if (!res.ok) throw new Error(await res.text());
+        const { cookies_id } = await res.json();
+        ckHidden.value = cookies_id;
+        ckOk.style.display = 'block';
+      } catch (e) {
+        alert('Upload failed: ' + (e.message || 'unknown error'));
+      }
+    });
 
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -297,9 +335,7 @@
       }
     });
 
-    function showError(msg){ errBox.textContent = msg; errBox.style.display = 'block'; }
-
-    // ----- API Drawer logic (uses DOMAIN from server) -----
+    // ----- API Drawer logic -----
     const drawer = document.getElementById('drawer');
     const openApi = document.getElementById('openApi');
     const closeApi = document.getElementById('closeApi');
@@ -311,11 +347,22 @@
   -d '{\"url\":\"https://example.com/video\",\"mode\":\"mp4\",\"height\":1080,\"universal\":true}'`;
       const curlSSE   = `curl -N ${base}/api/events/<job_id>`;
       const curlRes   = `curl -L -o video.mp4 ${base}/api/result/<job_id>`;
+
+      const curlWithCookies = `# 1) Upload cookies
+curl -s -X POST ${base}/api/cookies -F file=@cookies.txt
+# -> {"cookies_id":"abcd1234efgh5678"}
+# 2) Start with cookies_id
+curl -s -X POST ${base}/api/start \\
+  -H "Content-Type: application/json" \\
+  -d '{\"url\":\"https://www.youtube.com/watch?v=VIDEO\",\"mode\":\"mp4\",\"height\":1080,\"universal\":true,\"cookies_id\":\"abcd1234efgh5678\"}'`;
+
       document.getElementById('curlStart').textContent  = curlStart;
       document.getElementById('curlSSE').textContent    = curlSSE;
       document.getElementById('curlResult').textContent = curlRes;
+      document.getElementById('curlWithCookies').textContent = curlWithCookies;
       document.getElementById('endpointsList').textContent =
 `POST ${base}/api/start
+POST ${base}/api/cookies
 GET  ${base}/api/events/<job_id>
 GET  ${base}/api/result/<job_id>`;
     }
